@@ -1,4 +1,5 @@
 .env
+__pycache__
 bot.py
 *.json
 Excel-Sheets/*

@@ -284,7 +284,7 @@ async def about(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-
+'''
 @tree.command(name="whois", description="Find the user details by Discord username, ID, or email.", guild=discord.Object(id=GUILD_ID))
 async def whois(interaction: discord.Interaction, query: str):
     user_data = None
@@ -339,14 +339,14 @@ async def whois(interaction: discord.Interaction, query: str):
             "No matching user found. Please ensure the username, ID, or email is correct.",
             ephemeral=True
         )
-
+'''
 
 
 @tasks.loop(minutes=30)
 async def cleanup_welcome_messages():
     now = datetime.now(timezone.utc)
     stale_messages = {member_id: data for member_id, data in welcome_messages.items()
-                      if now - datetime.fromisoformat(data["timestamp"]) > timedelta(days=1)}
+                      if now - datetime.fromisoformat(data["timestamp"]) > timedelta(hours=1)}
 
     welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
     if welcome_channel:
