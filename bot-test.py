@@ -1,4 +1,4 @@
-import discord
+import discord 
 import json
 from discord.ext import commands, tasks
 from excel_handler import get_roles_for_email, load_excel_data
@@ -30,6 +30,7 @@ tree = bot.tree
 attempts_log = 'failed_attempts.json'
 verification_log = 'verification_loga.json'
 welcome_log = 'welcome_messages.json'
+username_log = 'username_updates.json'  # New log file for username updates
 excel_data = {}
 welcome_messages = {}
 
@@ -75,6 +76,33 @@ def load_welcome_log():
 def save_welcome_log(welcome_messages):
     with open(welcome_log, 'w') as f:
         json.dump(welcome_messages, f, indent=4)
+
+# New functions for username update log
+def load_username_log():
+    if os.path.exists(username_log) and os.stat(username_log).st_size > 0:
+        try:
+            with open(username_log, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return []
+    return []
+
+def save_username_log(log_entry):
+    logs = load_username_log()
+    logs.append(log_entry)
+    with open(username_log, 'w') as f:
+        json.dump(logs, f, indent=4)
+
+def log_username_update(member, email, oldname, newname):
+    log_entry = {
+        "discordusername": member.name,
+        "discordid": member.id,
+        "email": email,
+        "oldname": oldname,
+        "newname": newname,
+        "time": datetime.now(timezone.utc).isoformat()  # Time of the update
+    }
+    save_username_log(log_entry)
 
 @bot.event
 async def on_ready():
@@ -180,7 +208,6 @@ async def verify(interaction: discord.Interaction, email: str):
                 display_name = display_name.replace(role, "").strip()
                 print(f"New display name: {display_name}")
 
-
         new_nickname = f"{display_name} | {highest_role}"
         if len(new_nickname) > 32:
             if highest_role == "Campus Ambassador":
@@ -192,8 +219,14 @@ async def verify(interaction: discord.Interaction, email: str):
 
         if member != interaction.guild.owner:
             try:
-                await member.edit(nick=new_nickname)
-                print(f"Updated nickname for {member.display_name} to {new_nickname}")
+                old_display_name = member.display_name  # Save the old display name before updating
+
+                await member.edit(nick=new_nickname)  # Update nickname
+                print(f"Updated nickname for {old_display_name} to {new_nickname}")
+
+                # Log the username update after successful nickname change
+                log_username_update(member, email, old_display_name, new_nickname)
+
                 await interaction.followup.send(
                     f"{member.mention} Your username has been updated to `{new_nickname}` as per GSSoC guidelines. "
                     f"You are free to change it, but please ensure that **{highest_role}** remains part of your display name.",
@@ -204,19 +237,27 @@ async def verify(interaction: discord.Interaction, email: str):
 
         if member.id in welcome_messages:
             welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
-            welcome_message_id = welcome_messages[member.id]["message_id"]
-            try:
-                welcome_message = await welcome_channel.fetch_message(welcome_message_id)
-                await welcome_message.delete()
-                print(f"Deleted welcome message for {member.name}")
-                del welcome_messages[member.id]
-                save_welcome_log(welcome_messages)  # Save updated welcome messages
-            except discord.NotFound:
-                print(f"Welcome message not found for {member.name}")
+            if welcome_channel:
+                message_id = welcome_messages[member.id]["message_id"]
+                try:
+                    welcome_message = await welcome_channel.fetch_message(message_id)
+                    await welcome_message.delete()
+                    del welcome_messages[member.id]  # Remove the entry after successful deletion
+                    save_welcome_log(welcome_messages)  # Update the log
+                except discord.NotFound:
+                    print(f"Welcome message {message_id} not found.")
 
-        log_verification(member, email, f'Success: Assigned {role_names_str}')
+        log_entry = {
+            "discordusername": member.name,
+            "discordid": member.id,
+            "email": email,
+            "roles": role_names,
+            "time": datetime.now(timezone.utc).isoformat()  # Store with timezone-aware UTC timestamp
+        }
+        save_verification_log(log_entry)
+
     else:
-        await interaction.followup.send("Invalid roles. Please contact a moderator regarding this issue.", ephemeral=True)
+        await interaction.response.send_message(f"Sorry, we couldn't verify your email at this time.", ephemeral=True)
 
 
 #slash command to show bot developer details and bot details as embed
@@ -244,38 +285,79 @@ async def about(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
+@tree.command(name="whois", description="Find the user details by Discord username, ID, or email.", guild=discord.Object(id=GUILD_ID))
+async def whois(interaction: discord.Interaction, query: str):
+    user_data = None
+    query_lower = query.lower()
+
+    # Search in verification log
+    verification_logs = load_verification_log()
+    for log in verification_logs:
+        # Compare with discord username, user ID or email
+        if (log["discordusername"].lower() == query_lower or
+            str(log["discordid"]) == query or
+            log["email"].lower() == query_lower):
+            user_data = log
+            break
+
+    # Search in username update log
+    if not user_data:
+        username_logs = load_username_log()
+        for log in username_logs:
+            if (log["discordusername"].lower() == query_lower or
+                str(log["discordid"]) == query or
+                log["email"].lower() == query_lower):
+                user_data = log
+                break
+
+    # Search in failed attempts log
+    if not user_data:
+        for discord_id, email in failed_attempts.items():
+            if (str(discord_id) == query or email.lower() == query_lower):
+                user_data = {"discordid": discord_id, "email": email}
+                break
+
+    # Response logic
+    if user_data:
+        if "email" in user_data and "discordusername" in user_data:
+            await interaction.response.send_message(
+                f"**Discord User:** <@{user_data['discordid']}> \n**Email:** {user_data['email']}",
+                # ephemeral=True
+            )
+        elif "discordid" in user_data:
+            await interaction.response.send_message(
+                f"**Discord User:** <@{user_data['discordid']}> \n**Email:** Not verified.",
+                # ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"**Discord User:** Not found \n**Email:** {user_data['email']}",
+                ephemeral=True
+            )
+    else:
+        await interaction.response.send_message(
+            "No matching user found. Please ensure the username, ID, or email is correct.",
+            ephemeral=True
+        )
+
+
 
 @tasks.loop(minutes=30)
 async def cleanup_welcome_messages():
     now = datetime.now(timezone.utc)
-    expired_members = []
+    stale_messages = {member_id: data for member_id, data in welcome_messages.items()
+                      if now - datetime.fromisoformat(data["timestamp"]) > timedelta(days=1)}
 
-    for member_id, data in welcome_messages.items():
-        message_time = datetime.fromisoformat(data["timestamp"])  # Convert ISO format string to datetime
-        if now - message_time > timedelta(hours=1):
-            welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
-            welcome_message_id = data["message_id"]
+    welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
+    if welcome_channel:
+        for member_id, data in stale_messages.items():
             try:
-                message_to_delete = await welcome_channel.fetch_message(welcome_message_id)
-                await message_to_delete.delete()
-                print(f"Deleted old welcome message for member ID {member_id}")
+                message_id = data["message_id"]
+                message = await welcome_channel.fetch_message(message_id)
+                await message.delete()
+                del welcome_messages[member_id]  # Remove the entry after successful deletion
             except discord.NotFound:
-                print(f"Welcome message not found for member ID {member_id}")
-            finally:
-                expired_members.append(member_id)
-
-    for member_id in expired_members:
-        del welcome_messages[member_id]
-        save_welcome_log(welcome_messages)  # Save updated welcome messages
-
-def log_verification(member, email, status):
-    log_entry = {
-        "discordusername": member.name,
-        "discordid": member.id,
-        "email": email,
-        "verificationstatus": status,
-        "time": datetime.now(timezone.utc).isoformat()  # Use timezone-aware UTC datetime
-    }
-    save_verification_log(log_entry)
+                print(f"Message {message_id} not found.")
+        save_welcome_log(welcome_messages)  # Update the log
 
 bot.run(TOKEN)
