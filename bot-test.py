@@ -17,11 +17,12 @@ Role_contri = int(os.getenv('ROLE_CONTRI'))
 Role_ca = int(os.getenv('ROLE_CA'))
 Role_mentor = int(os.getenv('ROLE_MENTOR'))
 Role_pa = int(os.getenv('ROLE_PA'))
+ADMIN_IDS = [438560155639087105, 737927879052099595]
 AUTO_ASSIGNED_ROLE_ID = int(os.getenv('AUTO_ASSIGNED_ROLE_ID'))
 WELCOME_CHANNEL_ID = int(os.getenv('WELCOME_CHANNEL_ID'))
 
 ROLE_PRIORITY = ['Project Admin', 'Mentor', 'Campus Ambassador', 'Contributor']
-ROLE_PRIORITY_LOWER = ['project admin', 'mentor', 'campus ambassador', 'contributor', 'pa', 'ca', 'contri']
+ROLE_PRIORITY_LOWER = ['project admin', 'mentor', 'campus ambassador', 'contributor', 'pa', 'ca', 'contri', 'CA', 'PA']
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -258,6 +259,102 @@ async def verify(interaction: discord.Interaction, email: str):
 
     else:
         await interaction.response.send_message(f"Sorry, we couldn't verify your email at this time.", ephemeral=True)
+
+@tree.command(name="adminverify", description="Admin command to verify a user by providing their email.", guild=discord.Object(id=GUILD_ID))
+async def adminverify(interaction: discord.Interaction, user: discord.Member, email: str):
+    if interaction.user.id not in ADMIN_IDS:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+
+    # Reuse the logic from the verify command
+    auto_assigned_role = discord.utils.get(user.guild.roles, id=AUTO_ASSIGNED_ROLE_ID)
+
+    # Fetch roles for the provided email
+    role_names = get_roles_for_email(email, excel_data)
+
+    if not role_names:
+        await interaction.response.send_message(f"The email `{email}` is not in our records. Please contact a moderator.", ephemeral=True)
+        failed_attempts[str(user.id)] = email  # Log the failed attempt
+        save_attempts_log()
+        return
+
+    role_ids = {
+        'Contributor': Role_contri,
+        'Campus Ambassador': Role_ca,
+        'Mentor': Role_mentor,
+        'Project Admin': Role_pa
+    }
+
+    roles_to_assign = [discord.utils.get(interaction.guild.roles, id=role_ids[name]) for name in role_names]
+
+    if roles_to_assign:
+        await user.add_roles(*roles_to_assign)  # Assign the roles
+        role_names_str = ", ".join(role_names)
+        await interaction.response.send_message(f":tada: {user.mention} has been successfully verified as `{role_names_str}`.", ephemeral=True)
+
+        # Remove the auto-assigned role
+        if auto_assigned_role and auto_assigned_role in user.roles:
+            await user.remove_roles(auto_assigned_role)
+            print(f"Removed auto-assigned role from {user.name}")
+
+        # Update nickname based on the highest role
+        highest_role = None
+        for role in ROLE_PRIORITY:
+            if role in role_names:
+                highest_role = role
+                break
+
+        display_name = user.display_name
+
+        # Remove existing roles from the display name
+        for role in ROLE_PRIORITY + ROLE_PRIORITY_LOWER:
+            pattern_1 = f" | {role}"
+            pattern_2 = f"|{role}"
+
+            if pattern_1 in display_name:
+                display_name = display_name.replace(pattern_1, "").strip()
+            elif pattern_2 in display_name:
+                display_name = display_name.replace(pattern_2, "").strip()
+            
+            # Check for standalone role in the display name
+            if role in display_name.split(" "):
+                display_name = display_name.replace(role, "").strip()
+
+        new_nickname = f"{display_name} | {highest_role}"
+        if len(new_nickname) > 32:
+            if highest_role == "Campus Ambassador":
+                new_nickname = f"{display_name} | CA"
+            else:
+                excess_length = len(new_nickname) - 32
+                truncated_display_name = display_name[:-excess_length]
+                new_nickname = f"{truncated_display_name} | {highest_role}"
+
+        # Change the nickname for the user, if not the server owner
+        if user != interaction.guild.owner:
+            try:
+                old_display_name = user.display_name
+                await user.edit(nick=new_nickname)  # Update the nickname
+                print(f"Updated nickname for {old_display_name} to {new_nickname}")
+                log_username_update(user, email, old_display_name, new_nickname)  # Log the update
+                await interaction.followup.send(
+                    f"{user.mention} Your username has been updated to `{new_nickname}` as per GSSoC guidelines.",
+                    ephemeral=True
+                )
+            except discord.Forbidden:
+                print(f"Failed to change nickname for {user.name} due to missing permissions.")
+
+        # Log the successful verification
+        log_entry = {
+            "discordusername": user.name,
+            "discordid": user.id,
+            "email": email,
+            "roles": role_names,
+            "time": datetime.now(timezone.utc).isoformat()
+        }
+        save_verification_log(log_entry)
+
+    else:
+        await interaction.response.send_message(f"Sorry, we couldn't verify the email `{email}` at this time.", ephemeral=True)
 
 
 #slash command to show bot developer details and bot details as embed
