@@ -262,6 +262,7 @@ async def verify(interaction: discord.Interaction, email: str):
 
 @tree.command(name="adminverify", description="Admin command to verify a user by providing their email.", guild=discord.Object(id=GUILD_ID))
 async def adminverify(interaction: discord.Interaction, user: discord.Member, email: str):
+    # Check if the user has permission
     if interaction.user.id not in ADMIN_IDS:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
@@ -380,6 +381,26 @@ async def about(interaction: discord.Interaction):
     embed.set_footer(text="GSSoC Manager!", icon_url=GSSOC_LOGO)  # Set footer text and icon
 
     await interaction.response.send_message(embed=embed)
+
+
+@tree.command(name="ban", description="command to ban shashwat.", guild=discord.Object(id=GUILD_ID))
+async def ban(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+    if interaction.user.id not in ADMIN_IDS:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=False)
+        return
+    
+    # Dummy ban action
+    await interaction.response.send_message(f"{user.mention} Successfully banned for reason: {reason}", ephemeral=False)
+
+
+@tree.command(name="kick", description="command to kick shashwat.", guild=discord.Object(id=GUILD_ID))
+async def kick(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+    if interaction.user.id not in ADMIN_IDS:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=False)
+        return
+    
+    # Dummy kick action
+    await interaction.response.send_message(f"{user.mention} hase been kicked for reason: {reason}", ephemeral=False)
 
 '''
 @tree.command(name="whois", description="Find the user details by Discord username, ID, or email.", guild=discord.Object(id=GUILD_ID))
