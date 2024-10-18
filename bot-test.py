@@ -1,5 +1,6 @@
 import discord 
 import json
+import time
 from discord.ext import commands, tasks
 from excel_handler import get_roles_for_email, load_excel_data
 import os
@@ -14,15 +15,41 @@ GUILD_ID = int(os.getenv('DISCORD_GUILD_ID'))
 VERIFICATION_CHANNEL_ID = int(os.getenv('DISCORD_VERIFICATION_CHANNEL_ID'))
 
 Role_contri = int(os.getenv('ROLE_CONTRI'))
+Role_contri_wob = int(os.getenv('ROLE_CONTRI_WOB'))
+
 Role_ca = int(os.getenv('ROLE_CA'))
+Role_ca_wob = int(os.getenv('ROLE_CA_WOB'))
+
 Role_mentor = int(os.getenv('ROLE_MENTOR'))
+Role_mentor_wob = int(os.getenv('ROLE_MENTOR_WOB'))
+
 Role_pa = int(os.getenv('ROLE_PA'))
+Role_pa_wob = int(os.getenv('ROLE_PA_WOB'))
 ADMIN_IDS = [438560155639087105, 737927879052099595]
+
+LOG_CHANNEL_ID = 1292522424054710302 
 AUTO_ASSIGNED_ROLE_ID = int(os.getenv('AUTO_ASSIGNED_ROLE_ID'))
 WELCOME_CHANNEL_ID = int(os.getenv('WELCOME_CHANNEL_ID'))
 
-ROLE_PRIORITY = ['Project Admin', 'Mentor', 'Campus Ambassador', 'Contributor']
-ROLE_PRIORITY_LOWER = ['project admin', 'mentor', 'campus ambassador', 'contributor', 'pa', 'ca', 'contri', 'CA', 'PA']
+ROLE_PRIORITY = ['Project Admin Wob', 
+                 'Project Admin',
+                 'Mentor Wob', 
+                 'Mentor', 
+                 'Campus Ambassador Wob',
+                 'Campus Ambassador',  
+                 'Contributor Wob', 
+                 'Contributor']
+
+ROLE_PRIORITY_LOWER = ['project admin', 
+                       'mentor', 
+                       'campus ambassador', 
+                       'contributor'
+                       'contributer', 
+                       'pa', 
+                       'ca', 
+                       'contri', 
+                       'CA', 
+                       'PA']
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -165,9 +192,16 @@ async def verify(interaction: discord.Interaction, email: str):
 
     role_ids = {
         'Contributor': Role_contri,
+        'Contributor | Wob': Role_contri_wob,
+
         'Campus Ambassador': Role_ca,
+        'CA | Wob': Role_ca_wob,
+
         'Mentor': Role_mentor,
-        'Project Admin': Role_pa
+        'Mentor | Wob': Role_mentor_wob,
+
+        'Project Admin': Role_pa,
+        'PA | Wob': Role_pa_wob
     }
 
     roles_to_assign = [discord.utils.get(interaction.guild.roles, id=role_ids[name]) for name in role_names]
@@ -183,7 +217,7 @@ async def verify(interaction: discord.Interaction, email: str):
                 highest_role = role
                 break
 
-        if auto_assigned_role and auto_assigned_role in member.roles:
+        if auto_assigned_role in member.roles:
             await member.remove_roles(auto_assigned_role)
             print(f"Removed auto-assigned role from {member.name}")
 
@@ -211,8 +245,26 @@ async def verify(interaction: discord.Interaction, email: str):
 
         new_nickname = f"{display_name} | {highest_role}"
         if len(new_nickname) > 32:
+
+            excess_length = len(new_nickname) - 32
+            truncated_display_name = display_name[:-excess_length]
+            display_name = truncated_display_name
+
             if highest_role == "Campus Ambassador":
                 new_nickname = f"{display_name} | CA"
+            
+            elif highest_role == "CA | Wob":
+                new_nickname = f"{display_name} | CA | WoB"
+
+            elif highest_role == "Contributor Wob":
+                new_nickname = f"{display_name} | Contri | WoB"
+            
+            elif highest_role == "Mentor Wob":
+                new_nickname = f"{display_name} | Mentor | WoB"
+            
+            elif highest_role == "PA | Wob":
+                new_nickname = f"{display_name} | PA | WoB"
+
             else:
                 excess_length = len(new_nickname) - 32
                 truncated_display_name = display_name[:-excess_length]
@@ -260,6 +312,30 @@ async def verify(interaction: discord.Interaction, email: str):
     else:
         await interaction.response.send_message(f"Sorry, we couldn't verify your email at this time.", ephemeral=True)
 
+
+#slash command to give AUTO_ASSIGNED_ROLE_ID to user when they only have @everyone role, nothing else.
+@tree.command(name="cacheunverified", description="Cache members needing reassignment.", guild=discord.Object(id=GUILD_ID))
+async def cacheunverified(interaction: discord.Interaction):
+    if interaction.user.id not in ADMIN_IDS:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=False)
+        return
+
+    global cached_unverified_members
+    cached_unverified_members = []
+
+    try: 
+        for member in interaction.guild.members:
+            # time.sleep(0.5)
+            print(f"User: {member} Roles: {member.roles}\n\n")
+            if len(member.roles) == 1 or (len(member.roles)) == 2 or (len(member.roles)) == 0:
+                cached_unverified_members.append(member)
+
+        await interaction.response.send_message(f"Successfully cached {len(cached_unverified_members)} unverified member(s).", ephemeral=False)
+    except Exception as e:
+        print(e)
+        await interaction.response.send_message(f"An error occurred: {e}", ephemeral=False)
+
+
 @tree.command(name="adminverify", description="Admin command to verify a user by providing their email.", guild=discord.Object(id=GUILD_ID))
 async def adminverify(interaction: discord.Interaction, user: discord.Member, email: str):
     # Check if the user has permission
@@ -281,9 +357,13 @@ async def adminverify(interaction: discord.Interaction, user: discord.Member, em
 
     role_ids = {
         'Contributor': Role_contri,
+        'Contributor Wob': Role_contri_wob,
         'Campus Ambassador': Role_ca,
+        'Campus Ambassador Wob': Role_ca_wob,
         'Mentor': Role_mentor,
-        'Project Admin': Role_pa
+        'Mentor Wob': Role_mentor_wob,
+        'Project Admin': Role_pa,
+        'Project Admin Wob': Role_pa_wob
     }
 
     roles_to_assign = [discord.utils.get(interaction.guild.roles, id=role_ids[name]) for name in role_names]
@@ -401,63 +481,6 @@ async def kick(interaction: discord.Interaction, user: discord.Member, reason: s
     
     # Dummy kick action
     await interaction.response.send_message(f"{user.mention} hase been kicked for reason: {reason}", ephemeral=False)
-
-'''
-@tree.command(name="whois", description="Find the user details by Discord username, ID, or email.", guild=discord.Object(id=GUILD_ID))
-async def whois(interaction: discord.Interaction, query: str):
-    user_data = None
-    query_lower = query.lower()
-
-    # Search in verification log
-    verification_logs = load_verification_log()
-    for log in verification_logs:
-        # Compare with discord username, user ID or email
-        if (log["discordusername"].lower() == query_lower or
-            str(log["discordid"]) == query or
-            log["email"].lower() == query_lower):
-            user_data = log
-            break
-
-    # Search in username update log
-    if not user_data:
-        username_logs = load_username_log()
-        for log in username_logs:
-            if (log["discordusername"].lower() == query_lower or
-                str(log["discordid"]) == query or
-                log["email"].lower() == query_lower):
-                user_data = log
-                break
-
-    # Search in failed attempts log
-    if not user_data:
-        for discord_id, email in failed_attempts.items():
-            if (str(discord_id) == query or email.lower() == query_lower):
-                user_data = {"discordid": discord_id, "email": email}
-                break
-
-    # Response logic
-    if user_data:
-        if "email" in user_data and "discordusername" in user_data:
-            await interaction.response.send_message(
-                f"**Discord User:** <@{user_data['discordid']}> \n**Email:** {user_data['email']}",
-                # ephemeral=True
-            )
-        elif "discordid" in user_data:
-            await interaction.response.send_message(
-                f"**Discord User:** <@{user_data['discordid']}> \n**Email:** Not verified.",
-                # ephemeral=True
-            )
-        else:
-            await interaction.response.send_message(
-                f"**Discord User:** Not found \n**Email:** {user_data['email']}",
-                ephemeral=True
-            )
-    else:
-        await interaction.response.send_message(
-            "No matching user found. Please ensure the username, ID, or email is correct.",
-            ephemeral=True
-        )
-'''
 
 
 @tasks.loop(minutes=30)
