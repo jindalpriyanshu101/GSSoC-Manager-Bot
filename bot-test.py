@@ -13,6 +13,8 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = int(os.getenv('DISCORD_GUILD_ID'))
 VERIFICATION_CHANNEL_ID = int(os.getenv('DISCORD_VERIFICATION_CHANNEL_ID'))
+BOT_ADMIN_ID = 438560155639087105 # Bot admin ID
+
 
 Role_contri = int(os.getenv('ROLE_CONTRI'))
 Role_contri_wob = int(os.getenv('ROLE_CONTRI_WOB'))
@@ -27,7 +29,7 @@ Role_pa = int(os.getenv('ROLE_PA'))
 Role_pa_wob = int(os.getenv('ROLE_PA_WOB'))
 ADMIN_IDS = [438560155639087105, 737927879052099595]
 
-LOG_CHANNEL_ID = 1292522424054710302 
+LOG_CHANNEL_ID = 1292522424054710302 #1288157325173067888 #1292522424054710302
 AUTO_ASSIGNED_ROLE_ID = int(os.getenv('AUTO_ASSIGNED_ROLE_ID'))
 WELCOME_CHANNEL_ID = int(os.getenv('WELCOME_CHANNEL_ID'))
 
@@ -209,7 +211,7 @@ async def verify(interaction: discord.Interaction, email: str):
     if roles_to_assign:
         await member.add_roles(*roles_to_assign)
         role_names_str = ", ".join(role_names)
-        await interaction.response.send_message(f":tada: Congratulations! {member.mention} :tada:, you're selected as `{role_names_str}` for GSSoC'24 Extended.", ephemeral=True)
+        # await interaction.response.send_message(f":tada: Congratulations! {member.mention} :tada:, you're selected as `{role_names_str}` for GSSoC'24 Extended.", ephemeral=True)
 
         highest_role = None
         for role in ROLE_PRIORITY:
@@ -270,6 +272,12 @@ async def verify(interaction: discord.Interaction, email: str):
                 truncated_display_name = display_name[:-excess_length]
                 new_nickname = f"{truncated_display_name} | {highest_role}"
 
+
+        if "Wob" in new_nickname or "WoB" in new_nickname:
+            await interaction.response.send_message(f":tada: Congratulations! {member.mention} :tada:, you're selected as `{role_names_str}` for Winter Of Blockchain 2024.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f":tada: Congratulations! {member.mention} :tada:, you're selected as `{role_names_str}` for GSSoC'24 Extended.", ephemeral=True)
+
         if member != interaction.guild.owner:
             try:
                 old_display_name = member.display_name  # Save the old display name before updating
@@ -281,7 +289,7 @@ async def verify(interaction: discord.Interaction, email: str):
                 log_username_update(member, email, old_display_name, new_nickname)
 
                 await interaction.followup.send(
-                    f"{member.mention} Your username has been updated to `{new_nickname}` as per GSSoC guidelines. "
+                    f"{member.mention} Your username has been updated to `{new_nickname}` as per Guidelines. "
                     f"You are free to change it, but please ensure that **{highest_role}** remains part of your display name.",
                     ephemeral=True
                 )
@@ -313,7 +321,6 @@ async def verify(interaction: discord.Interaction, email: str):
         await interaction.response.send_message(f"Sorry, we couldn't verify your email at this time.", ephemeral=True)
 
 
-#slash command to give AUTO_ASSIGNED_ROLE_ID to user when they only have @everyone role, nothing else.
 @tree.command(name="cacheunverified", description="Cache members needing reassignment.", guild=discord.Object(id=GUILD_ID))
 async def cacheunverified(interaction: discord.Interaction):
     if interaction.user.id not in ADMIN_IDS:
@@ -465,6 +472,7 @@ async def about(interaction: discord.Interaction):
 
 @tree.command(name="ban", description="command to ban shashwat.", guild=discord.Object(id=GUILD_ID))
 async def ban(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+    # Check if the invoking user is an admin
     if interaction.user.id not in ADMIN_IDS:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=False)
         return
@@ -475,6 +483,7 @@ async def ban(interaction: discord.Interaction, user: discord.Member, reason: st
 
 @tree.command(name="kick", description="command to kick shashwat.", guild=discord.Object(id=GUILD_ID))
 async def kick(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+    # Check if the invoking user is an admin
     if interaction.user.id not in ADMIN_IDS:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=False)
         return
@@ -500,5 +509,30 @@ async def cleanup_welcome_messages():
             except discord.NotFound:
                 print(f"Message {message_id} not found.")
         save_welcome_log(welcome_messages)  # Update the log
+
+@bot.command(name="hide", description="Hide a channel from the server.", guild=discord.Object(id=GUILD_ID))
+async def hide(ctx, channel: discord.TextChannel = None):
+    if ctx.author.guild_permissions.manage_channels or ctx.author.id == BOT_ADMIN_ID:
+        if not channel:
+            await ctx.send("Please provide the channel to hide.")
+            return
+
+        await channel.set_permissions(ctx.guild.default_role, read_messages=False)
+        await ctx.send(f"Channel {channel.mention} has been hidden.")
+    else:
+        await ctx.send("You do not have permission to use this command.")
+
+@bot.command(name="unhide", description="Unhide a channel from the server.", guild=discord.Object(id=GUILD_ID))
+async def unhide(ctx, channel: discord.TextChannel = None):
+    if ctx.author.guild_permissions.manage_channels or ctx.author.id == BOT_ADMIN_ID:
+        if not channel:
+            await ctx.send("Please provide the channel to unhide.")
+            return
+
+        await channel.set_permissions(ctx.guild.default_role, read_messages=True)
+        await ctx.send(f"Channel {channel.mention} has been unhidden.")
+    else:
+        await ctx.send("You do not have permission to use this command.")
+
 
 bot.run(TOKEN)
