@@ -4,6 +4,7 @@ import time
 from discord.ext import commands, tasks
 from excel_handler import get_roles_for_email, load_excel_data
 import os
+import random
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
@@ -13,7 +14,18 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = int(os.getenv('DISCORD_GUILD_ID'))
 VERIFICATION_CHANNEL_ID = int(os.getenv('DISCORD_VERIFICATION_CHANNEL_ID'))
-BOT_ADMIN_ID = 438560155639087105 # Bot admin ID
+MALIK = 438560155639087105
+ADMIN_IDS = [438560155639087105]
+HOMIES = [] #Add ids here
+APSHABD = ["Na raha jara to te? Karu guddi laal?",
+           "Wah beta wah, kya baat hai. Chle ja shanti see",
+           "Abe kya bola be tune? hosh meto haina chewwww :skull:",
+           "Kya bol raha hai be?",
+           "Wah beta, lagta hai khurak lekr hi manega?",
+           "Nikal l.., pehli fursat me nikal",
+           "Mat kr koshish, pela jayga tu",
+           "B--, chup chap apna kaam kr",
+           "Bade manhus irade hai apke, ese me bot kre to kya kre?"]
 
 
 Role_contri = int(os.getenv('ROLE_CONTRI'))
@@ -27,7 +39,6 @@ Role_mentor_wob = int(os.getenv('ROLE_MENTOR_WOB'))
 
 Role_pa = int(os.getenv('ROLE_PA'))
 Role_pa_wob = int(os.getenv('ROLE_PA_WOB'))
-ADMIN_IDS = [438560155639087105, 737927879052099595]
 
 LOG_CHANNEL_ID = 1292522424054710302 #1288157325173067888 #1292522424054710302
 AUTO_ASSIGNED_ROLE_ID = int(os.getenv('AUTO_ASSIGNED_ROLE_ID'))
@@ -512,27 +523,84 @@ async def cleanup_welcome_messages():
 
 @bot.command(name="hide", description="Hide a channel from the server.", guild=discord.Object(id=GUILD_ID))
 async def hide(ctx, channel: discord.TextChannel = None):
-    if ctx.author.guild_permissions.manage_channels or ctx.author.id == BOT_ADMIN_ID:
+    if ctx.author.guild_permissions.manage_channels or ctx.author.id in ADMIN_IDS:
         if not channel:
-            await ctx.send("Please provide the channel to hide.")
+            await ctx.reply("Please provide the channel to hide.", delete_after=5)
             return
 
         await channel.set_permissions(ctx.guild.default_role, read_messages=False)
         await ctx.send(f"Channel {channel.mention} has been hidden.")
     else:
-        await ctx.send("You do not have permission to use this command.")
+        if ctx.author.id in HOMIES:
+            await ctx.reply(f"{random.choice(APSHABD)}", delete_after=5)
+        else:
+            await ctx.reply("You do not have permission to use this command.", delete_after=5)
 
 @bot.command(name="unhide", description="Unhide a channel from the server.", guild=discord.Object(id=GUILD_ID))
 async def unhide(ctx, channel: discord.TextChannel = None):
-    if ctx.author.guild_permissions.manage_channels or ctx.author.id == BOT_ADMIN_ID:
+    if ctx.author.guild_permissions.manage_channels or ctx.author.id in ADMIN_IDS:
         if not channel:
-            await ctx.send("Please provide the channel to unhide.")
+            await ctx.reply("Please provide the channel to unhide.", delete_after=5)
             return
 
         await channel.set_permissions(ctx.guild.default_role, read_messages=True)
         await ctx.send(f"Channel {channel.mention} has been unhidden.")
     else:
-        await ctx.send("You do not have permission to use this command.")
+        if ctx.author.id in HOMIES:
+            await ctx.reply(f"{random.choice(APSHABD)}", delete_after=5)
+        else:
+            await ctx.reply("You do not have permission to use this command.", delete_after=5)
+
+@bot.command(name="lock", description="Lock a channel.", guild=discord.Object(id=GUILD_ID))
+async def lock(ctx, channel: discord.TextChannel = None):
+    if ctx.author.guild_permissions.manage_channels or ctx.author.id in ADMIN_IDS:
+        if not channel:
+            await ctx.reply("Please provide the channel to lock.", delete_after=5)
+            return
+
+        await channel.set_permissions(ctx.guild.default_role, send_messages=False)
+        await ctx.send(f"Channel {channel.mention} has been locked.")
+    else:
+        if ctx.author.id in HOMIES:
+            await ctx.reply(f"{random.choice(APSHABD)}", delete_after=5)
+        else:
+            await ctx.reply("You do not have permission to use this command.", delete_after=5)
+
+@bot.command(name="unlock", description="Unlock a channel.", guild=discord.Object(id=GUILD_ID))
+async def unlock(ctx, channel: discord.TextChannel = None):
+    if ctx.author.guild_permissions.manage_channels or ctx.author.id in ADMIN_IDS:
+        if not channel:
+            await ctx.reply("Please provide the channel to unlock.", delete_after=5)
+            return
+
+        await channel.set_permissions(ctx.guild.default_role, send_messages=True)
+        await ctx.send(f"Channel {channel.mention} has been unlocked.")
+    else:
+        if ctx.author.id in HOMIES:
+            await ctx.reply(f"{random.choice(APSHABD)}", delete_after=5)
+        else:
+            await ctx.reply("You do not have permission to use this command.", delete_after=5)
+
+
+@bot.command(name="clear", description="Clear a specified number of messages from a channel.", guild=discord.Object(id=GUILD_ID))
+async def clear(ctx, amount: int = None):
+    if ctx.author.guild_permissions.manage_messages or ctx.author.id in ADMIN_IDS:
+        try:
+            if amount == None or amount <= 0:
+                await ctx.send("Please specify a valid amount to clear.")
+                return
+
+            deleted = await ctx.channel.purge(limit=amount)
+            await ctx.send(f"🧹 Cleared {len(deleted)} messages.", delete_after=2)
+        except discord.errors.Forbidden:
+            await ctx.reply("I do not have permission to manage messages in this channel.", delete_after=5)
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}")
+    else:
+        if ctx.author.id in HOMIES:
+            await ctx.reply(f"{random.choice(APSHABD)}", delete_after=5)
+        else:
+            await ctx.reply("You do not have permission to use this command.", delete_after=5)
 
 
 bot.run(TOKEN)
