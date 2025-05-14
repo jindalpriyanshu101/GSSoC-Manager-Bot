@@ -39,7 +39,7 @@ APSHABD = ["Na raha jara to te? Karu guddi laal?",
            "Abe kya bola be tune? hosh meto haina chewwww :skull:",
            "Kya bol raha hai be?",
            "Wah beta, lagta hai khurak lekr hi manega?",
-           "Nikal lawde, pehli fursat me nikal",
+           "Nikal l.., pehli fursat me nikal",
            "Mat kr koshish, pela jayga tu",
            "B--, chup chap apna kaam kr",
            "Bade manhus irade hai apke, ese me bot kre to kya kre?"]
@@ -70,8 +70,15 @@ welcome_log = 'welcome_messages.json'
 
 # Set up intents and bot
 intents = discord.Intents.all()
+intents.message_content = True  # Explicitly enable message content intent
 bot = commands.Bot(command_prefix='!', intents=intents)
 tree = bot.tree
+
+# Print confirmation of intents
+print("Bot setup with the following intents:")
+print(f"- Message Content: {intents.message_content}")
+print(f"- Members: {intents.members}")
+print(f"- Guilds: {intents.guilds}")
 
 # Shared data storage
 bot_data = {
@@ -127,13 +134,27 @@ async def on_ready():
     
     # Sync slash commands
     try:
-        synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
+        # Sync commands globally and to the guild
+        await bot.tree.sync()  # For slash/hybrid commands globally
+        synced = await tree.sync(guild=discord.Object(id=GUILD_ID))  # For guild-specific commands
         print(f'Synced {len(synced)} commands successfully.')
     except Exception as e:
         print(f'Error syncing commands: {e}')
+        import traceback
+        traceback.print_exc()
 
     # Start tasks
     cleanup_welcome_messages.start()
+    
+    # Start verification module tasks
+    try:
+        import Verification_Module.verify as verify_module
+        verify_module.start_background_tasks()
+        print("Started verification module background tasks")
+    except Exception as e:
+        print(f"Error starting verification tasks: {e}")
+        import traceback
+        traceback.print_exc()
     
     print(f'Bot is ready, logged in as {bot.user}')
 
@@ -162,11 +183,69 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         return
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"Missing required argument: {error.param}")
+        # Get command signature and description
+        command = ctx.command
+        signature = command.signature
+        description = command.description or "No description available"
+        
+        # Create an embed for the error
+        embed = discord.Embed(
+            title=f"Command: {ctx.prefix}{command.name}",
+            description=f"{description}",
+            color=discord.Color.red()
+        )
+        
+        # Add the correct usage field
+        embed.add_field(
+            name="Usage",
+            value=f"`{ctx.prefix}{command.name} {signature}`",
+            inline=False
+        )
+        
+        # Add the specific error message
+        embed.add_field(
+            name="Error",
+            value=f"Missing required argument: `{error.param.name}`",
+            inline=False
+        )
+        
+        # Add examples if we want to add them for specific commands later
+        # if hasattr(command, "examples") and command.examples:
+        #     embed.add_field(name="Examples", value="\n".join(command.examples), inline=False)
+        
+        await ctx.send(embed=embed)
     elif isinstance(error, commands.BadArgument):
-        await ctx.send(f"Bad argument: {error}")
+        # Similar to MissingRequiredArgument but for incorrect argument types
+        command = ctx.command
+        signature = command.signature
+        
+        embed = discord.Embed(
+            title=f"Command: {ctx.prefix}{command.name}",
+            description=f"You provided an invalid argument for this command.",
+            color=discord.Color.red()
+        )
+        
+        embed.add_field(
+            name="Usage",
+            value=f"`{ctx.prefix}{command.name} {signature}`", 
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Error",
+            value=str(error),
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
     elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("You don't have permission to use this command.")
+        await ctx.send(f"You don't have the required permissions: {', '.join(error.missing_permissions)}")
+    elif isinstance(error, commands.BotMissingPermissions):
+        await ctx.send(f"I don't have the required permissions: {', '.join(error.missing_permissions)}")
+    elif isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(f"This command is on cooldown. Try again in {error.retry_after:.1f} seconds.")
+    elif isinstance(error, commands.NoPrivateMessage):
+        await ctx.send("This command cannot be used in private messages.")
     else:
         print(f"Ignoring exception in command {ctx.command}:", file=sys.stderr)
         import traceback
@@ -207,11 +286,13 @@ def load_commands():
     
     # Load verification module
     try:
-        from Verification_Module import verify
-        verify.setup(bot, tree, bot_data, GUILD_ID, VERIFICATION_CHANNEL_ID)
+        import Verification_Module.verify as verify_module
+        verify_module.setup(bot, tree, bot_data, GUILD_ID, VERIFICATION_CHANNEL_ID)
         print("Loaded verification module")
     except Exception as e:
         print(f"Error loading verification module: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Load individual commands from commands folder
     if os.path.exists("commands"):
@@ -226,6 +307,85 @@ def load_commands():
                     print(f"Loaded command module: {command}")
             except Exception as e:
                 print(f"Error loading command module {command}: {e}")
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error):
+
+    # Handle errors from application (slash) commands
+    # Unwrap the error if it's wrapped in a CommandInvokeError
+    error = getattr(error, "original", error)
+    
+    if isinstance(error, commands.MissingRequiredArgument):
+        command_name = interaction.command.name if interaction.command else "Unknown command"
+        
+        embed = discord.Embed(
+            title=f"Command: /{command_name}",
+            description="Missing a required argument",
+            color=discord.Color.red()
+        )
+        
+        embed.add_field(
+            name="Error",
+            value=f"Missing required argument: `{error.param.name}`",
+            inline=False
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+    elif isinstance(error, commands.BadArgument):
+        command_name = interaction.command.name if interaction.command else "Unknown command"
+        
+        embed = discord.Embed(
+            title=f"Command: /{command_name}",
+            description="You provided an invalid argument",
+            color=discord.Color.red()
+        )
+        
+        embed.add_field(
+            name="Error",
+            value=str(error),
+            inline=False
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+    elif isinstance(error, commands.MissingPermissions):
+        await interaction.response.send_message(
+            f"You don't have the required permissions: {', '.join(error.missing_permissions)}",
+            ephemeral=True
+        )
+    elif isinstance(error, commands.BotMissingPermissions):
+        await interaction.response.send_message(
+            f"I don't have the required permissions: {', '.join(error.missing_permissions)}",
+            ephemeral=True
+        )
+    elif isinstance(error, commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"This command is on cooldown. Try again in {error.retry_after:.1f} seconds.",
+            ephemeral=True
+        )
+    elif isinstance(error, commands.NoPrivateMessage):
+        await interaction.response.send_message(
+            "This command cannot be used in private messages.",
+            ephemeral=True
+        )
+    else:
+        # Log the error
+        print(f"Ignoring exception in app command:", file=sys.stderr)
+        import traceback
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        
+        # Notify the user
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                "An error occurred while executing the command.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "An error occurred while executing the command.",
+                ephemeral=True
+            )
 
 if __name__ == "__main__":
     load_commands()
