@@ -1,16 +1,17 @@
 import discord
 from datetime import datetime
 import os
+from discord.ext import commands
 
 def setup(bot, tree, bot_data, admin_ids, homies):
     guild_id = int(os.getenv('DISCORD_GUILD_ID'))
     
-    @tree.command(
+    @bot.hybrid_command(
         name="about", 
-        description="Shows information about the bot and the developer.", 
-        guild=discord.Object(id=guild_id)
+        description="Shows information about the bot and the developer."
     )
-    async def about(interaction: discord.Interaction):
+    @commands.guild_only()
+    async def about(ctx):
         GSSOC_LOGO = "https://images-ext-1.discordapp.net/external/uhOfjzdx2Ybeh7T8RqVFgvs4ryRucs3_7sT51GNfgNQ/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/1288156277351907389/94edf9346498881ddbc981cb9b82fe52.webp"
         
         embed = discord.Embed(
@@ -29,4 +30,4 @@ def setup(bot, tree, bot_data, admin_ids, homies):
 
         embed.set_footer(text="GSSoC Manager!", icon_url=GSSOC_LOGO)
 
-        await interaction.response.send_message(embed=embed) 
+        await ctx.send(embed=embed) 
