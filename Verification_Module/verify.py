@@ -129,7 +129,6 @@ def log_username_update(member, email, oldname, newname):
     }
     save_username_log(log_entry)
 
-@bot.event
 async def on_ready():
     global excel_data
     global welcome_messages
@@ -137,6 +136,8 @@ async def on_ready():
     excel_data = load_excel_data()
     welcome_messages = load_welcome_log()  # Load welcome messages from file
 
+    #remove previous presence
+    # await bot.change_presence(activity=None)
     activity = discord.Activity(type=discord.ActivityType.watching, name="Verification process for GSSoC'24")
     await bot.change_presence(activity=activity)    
     
@@ -149,6 +150,9 @@ async def on_ready():
         print(f'Error syncing commands: {e}')
 
     cleanup_welcome_messages.start()
+
+
+print('Bot verification is running.')
 
 @bot.event
 async def on_member_join(member):
